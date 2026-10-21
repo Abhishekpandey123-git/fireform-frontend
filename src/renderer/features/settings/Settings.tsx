@@ -63,130 +63,131 @@ export function Settings() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 text-gray-200">
-      <div className="border-b border-gray-700 pb-4">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <User className="w-6 h-6 text-indigo-400" /> User Profile Settings
-        </h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Configure your professional identity and custom attributes for FireForm.
-        </p>
-      </div>
-
-      {message && (
-        <div className="p-3 bg-indigo-900/50 border border-indigo-500 rounded text-sm text-indigo-200">
-          {message}
+    <div className="w-full h-full overflow-y-auto bg-gray-50 p-8 text-gray-800">
+      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-6 mb-12">
+        
+        <div className="border-b border-gray-200 pb-4">
+          <h1 className="text-xl font-bold flex items-center gap-2 text-gray-900">
+            <User className="w-5 h-5 text-indigo-600" /> User Profile Settings
+          </h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Configure your professional identity and custom attributes for FireForm.
+          </p>
         </div>
-      )}
 
-      <form onSubmit={handleSave} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center gap-1.5">
-              <User className="w-4 h-4 text-gray-400" /> Full Name
-            </label>
-            <input
-              type="text"
-              value={profile.name}
-              onChange={e => setProfile({ ...profile, name: e.target.value })}
-              placeholder="e.g. Jane Doe"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-            />
+        {message && (
+          <div className={`p-3 rounded-lg text-xs font-medium ${message.includes('success') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+            {message}
+          </div>
+        )}
+
+        <form onSubmit={handleSave} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={profile.name}
+                onChange={e => setProfile({ ...profile, name: e.target.value })}
+                placeholder="e.g. Jane Doe"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Profession
+              </label>
+              <input
+                type="text"
+                value={profile.profession}
+                onChange={e => setProfile({ ...profile, profession: e.target.value })}
+                placeholder="e.g. Healthcare, Legal, Tech"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center gap-1.5">
-              <Briefcase className="w-4 h-4 text-gray-400" /> Profession
-            </label>
-            <input
-              type="text"
-              value={profile.profession}
-              onChange={e => setProfile({ ...profile, profession: e.target.value })}
-              placeholder="e.g. Healthcare, Legal, Tech"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-gray-400" /> Role / Title
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+              Role / Title
             </label>
             <input
               type="text"
               value={profile.role}
               onChange={e => setProfile({ ...profile, role: e.target.value })}
               placeholder="e.g. Attending Physician"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-gray-400" /> Bio / Description
-          </label>
-          <textarea
-            rows={3}
-            value={profile.description}
-            onChange={e => setProfile({ ...profile, description: e.target.value })}
-            placeholder="Brief professional summary..."
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+              Bio / Description
+            </label>
+            <textarea
+              rows={3}
+              value={profile.description}
+              onChange={e => setProfile({ ...profile, description: e.target.value })}
+              placeholder="Brief professional summary..."
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
 
-        <div className="border-t border-gray-700 pt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-200">Custom Fields</h3>
+          <div className="border-t border-gray-200 pt-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">Custom Fields</h3>
+              <button
+                type="button"
+                onClick={handleAddCustomField}
+                className="flex items-center gap-1 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition border border-gray-300"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Field
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {profile.customFields.map((field, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Key (e.g. Department)"
+                    value={field.key}
+                    onChange={e => handleCustomFieldChange(index, 'key', e.target.value)}
+                    className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Value (e.g. Cardiology)"
+                    value={field.value}
+                    onChange={e => handleCustomFieldChange(index, 'value', e.target.value)}
+                    className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCustomField(index)}
+                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200">
             <button
-              type="button"
-              onClick={handleAddCustomField}
-              className="flex items-center gap-1 text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition"
+              type="submit"
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 px-4 rounded-lg text-sm font-medium transition shadow-sm disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" /> Add Field
+              <Save className="w-4 h-4" /> {saving ? 'Saving Profile...' : 'Save Profile'}
             </button>
           </div>
-
-          <div className="space-y-3">
-            {profile.customFields.map((field, index) => (
-              <div key={index} className="flex items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="Key (e.g. Department)"
-                  value={field.key}
-                  onChange={e => handleCustomFieldChange(index, 'key', e.target.value)}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Value (e.g. Cardiology)"
-                  value={field.value}
-                  onChange={e => handleCustomFieldChange(index, 'value', e.target.value)}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveCustomField(index)}
-                  className="p-2 text-red-400 hover:bg-red-950/30 rounded-lg transition"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-4 border-t border-gray-700">
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg font-medium transition disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save Profile'}
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
