@@ -178,7 +178,9 @@ export function App() {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-zinc-900">{modelDownload.model}</p>
+              <p className="truncate text-xs font-semibold text-zinc-900">
+                {modelDownload.provider} · {modelDownload.model}
+              </p>
               <p className="mt-0.5 text-[11px] text-zinc-500">
                 {modelDownload.status === 'downloading'
                   ? modelDownload.progress?.status || 'Downloading model…'
@@ -206,7 +208,7 @@ export function App() {
               className="mt-2 rounded-md bg-violet-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-violet-700"
               onClick={event => {
                 event.stopPropagation()
-                void startModelDownload(modelDownload.model, modelDownload.previousModel)
+                void startModelDownload(modelDownload.provider, modelDownload.model)
               }}
             >
               Retry

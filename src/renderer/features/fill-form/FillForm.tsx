@@ -12,19 +12,18 @@ import { ConfirmDialog, TrashIcon } from '../../components/ConfirmDialog'
 import { ModelSelector } from '../../components/ModelSelector'
 
 export function FillForm() {
-  const { templates, selectedFillIds, toggleFillSelection, setActiveTab, setPreviewPath } =
+  const { templates, selectedFillIds, toggleFillSelection, setActiveTab, setPreviewPath, selectedLLM } =
     useStore(s => ({
       templates: s.templates,
       selectedFillIds: s.selectedFillIds,
       toggleFillSelection: s.toggleFillSelection,
       setActiveTab: s.setActiveTab,
       setPreviewPath: s.setPreviewPath,
+      selectedLLM: s.selectedLLM,
     }))
 
   const del = useDeleteTemplate()
   const [inputText, setInputText] = useState('')
-  const [model, setModel] = useState('')
-  const [modelBusy, setModelBusy] = useState(false)
   const [status, setStatus] = useState({ message: '', type: '' })
   const [jsonResponse, setJsonResponse] = useState<unknown>(null)
   const [selectionError, setSelectionError] = useState(false)
@@ -65,7 +64,10 @@ export function FillForm() {
       return
     }
 
-    const selectedModel = model || undefined
+    if (!selectedLLM) {
+      setStatus({ message: 'Select an available provider and model in Settings first.', type: 'error' })
+      return
+    }
     setStatus({ message: `Filling ${pluralize(count, 'form')}…`, type: 'info' })
 
     const results: Record<string, unknown>[] = []
@@ -76,7 +78,12 @@ export function FillForm() {
 
     for (const id of selectedFillIds) {
       try {
-        const result = await fillTemplate({ template_id: id, input_text: finalInputText, model: selectedModel })
+        const result = await fillTemplate({
+          template_id: id,
+          input_text: finalInputText,
+          provider: selectedLLM.provider,
+          model: selectedLLM.model,
+        })
         results.push(result)
       } catch (e: unknown) {
         const template = templates.find(t => t.id === id)
@@ -227,7 +234,7 @@ export function FillForm() {
           </div>
         )}
 
-        <ModelSelector value={model} onChange={setModel} onBusyChange={setModelBusy} />
+        <ModelSelector />
 
         <p><b>External APIs</b></p>
 
@@ -263,8 +270,8 @@ export function FillForm() {
 
         <button
           type="submit"
-          disabled={count === 0 || modelBusy}
-          className={count === 0 || modelBusy ? 'is-disabled' : ''}
+          disabled={count === 0}
+          className={count === 0 ? 'is-disabled' : ''}
         >
           {count > 1 ? `Fill ${count} Forms` : 'Fill Form'}
         </button>

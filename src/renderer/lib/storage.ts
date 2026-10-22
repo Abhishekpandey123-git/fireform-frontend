@@ -1,9 +1,10 @@
 import type { Template } from '../types'
+import type { LLMModelChoice } from './api'
 
 const TEMPLATES_KEY = 'fireform.templates.v1'
 const LAST_OUTPUT_KEY = 'fireform.lastOutputPath.v1'
 const TEMPLATES_VIEW_KEY = 'fireform.templatesView.v1'
-const SELECTED_MODEL_KEY = 'fireform.selectedModel.v1'
+const SELECTED_LLM_KEY = 'fireform.selectedLLM.v1'
 
 export type TemplatesView = 'list' | 'grid'
 
@@ -38,17 +39,27 @@ export function saveTemplatesView(view: TemplatesView): void {
   localStorage.setItem(TEMPLATES_VIEW_KEY, view)
 }
 
-export function loadSelectedModel(): string | null {
+export function loadSelectedLLM(): LLMModelChoice | null {
   try {
-    return localStorage.getItem(SELECTED_MODEL_KEY)
+    const raw = localStorage.getItem(SELECTED_LLM_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as Record<string, unknown>)['provider'] !== 'string' ||
+      typeof (parsed as Record<string, unknown>)['model'] !== 'string'
+    ) return null
+    return parsed as LLMModelChoice
   } catch {
     return null
   }
 }
 
-export function saveSelectedModel(name: string): void {
+export function saveSelectedLLM(selection: LLMModelChoice | null): void {
   try {
-    localStorage.setItem(SELECTED_MODEL_KEY, name)
+    if (selection) localStorage.setItem(SELECTED_LLM_KEY, JSON.stringify(selection))
+    else localStorage.removeItem(SELECTED_LLM_KEY)
   } catch {
     // Storage may be unavailable in restricted renderer contexts.
   }
