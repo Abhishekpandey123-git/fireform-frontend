@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Briefcase, Shield, FileText, Plus, Trash2, Save } from 'lucide-react';
+import { User, Plus, Trash2, Save } from 'lucide-react';
 
 export function Settings() {
   const [profile, setProfile] = useState({
@@ -13,13 +13,12 @@ export function Settings() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    // Fetch profile data from backend API
     fetch('http://127.0.0.1:8000/v1/profiles')
       .then(res => res.json())
       .then(data => {
         if (data) setProfile(data);
       })
-      .catch(err => console.log('Using default profile state'));
+      .catch(() => console.log('Using default profile state'));
   }, []);
 
   const handleAddCustomField = () => {
@@ -55,7 +54,7 @@ export function Settings() {
       } else {
         setMessage('Failed to save profile.');
       }
-    } catch (err) {
+    } catch {
       setMessage('Error connecting to backend API.');
     } finally {
       setSaving(false);
