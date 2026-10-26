@@ -4,14 +4,22 @@ import { useStore } from '../store'
 import {
   describeLLMError,
   type LLMModelChoice,
+  type LLMProviderName,
 } from '../lib/api'
 import { defaultChoice, optionsFor, providersWithOllama } from '../lib/llmModels'
 import { cn } from '../lib/utils'
 
-export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}) {
+export function ModelSelector({
+  onConfigure,
+  showHelpText = true,
+}: {
+  onConfigure?: (provider: LLMProviderName, trigger: HTMLElement) => void
+  showHelpText?: boolean
+} = {}) {
   const selectedLLM = useStore(state => state.selectedLLM)
   const setSelectedLLM = useStore(state => state.setSelectedLLM)
   const catalog = useStore(state => state.llmCatalog)
+  const pinnedLLMModels = useStore(state => state.pinnedLLMModels)
   const refreshLLMModels = useStore(state => state.refreshLLMModels)
   const modelDownload = useStore(state => state.modelDownload)
   const startModelDownload = useStore(state => state.startModelDownload)
@@ -54,6 +62,12 @@ export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}
   const selectedModel = draftChoice?.model || baseChoice?.model || ''
   const provider = providers.find(item => item.provider === selectedProvider)
   const options = optionsFor(provider)
+  const quickOptions = options.filter(option =>
+    option.model.name === provider?.default_model
+    || (selectedLLM?.provider === selectedProvider && option.model.name === selectedLLM.model)
+    || option.model.manual === true
+    || (pinnedLLMModels[selectedProvider as LLMProviderName] || []).includes(option.model.name)
+  )
   const selectedOption = options.find(option => option.model.name === selectedModel)
   const downloading = modelDownload?.status === 'downloading'
   const isDownloadingSelected = downloading &&
@@ -90,7 +104,11 @@ export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}
     }
   }
 
-  function chooseModel(modelName: string) {
+  function chooseModel(modelName: string, trigger: HTMLElement) {
+    if (modelName === '__fireform_more_models__') {
+      onConfigure?.(selectedProvider as LLMProviderName, trigger)
+      return
+    }
     const choice = { provider: selectedProvider, model: modelName }
     const option = options.find(item => item.model.name === modelName)
     if (option && !option.downloadable) {
@@ -144,30 +162,31 @@ export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}
         Model
         <span className="relative">
           <select
-            value={selectedModel}
-            disabled={loading || downloading || !provider?.available || options.length === 0}
-            onChange={event => chooseModel(event.target.value)}
+            value={quickOptions.some(option => option.model.name === selectedModel) ? selectedModel : ''}
+            disabled={loading || downloading || !provider?.available}
+            onChange={event => chooseModel(event.target.value, event.currentTarget)}
             className={cn(
               'w-full appearance-none rounded-lg border border-zinc-200 bg-zinc-50',
               'px-3 py-2 pr-8 text-sm font-mono text-zinc-800',
               'focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60'
             )}
           >
-            {!options.length && <option value="">No models available</option>}
-            {options.some(option => !option.downloadable) && (
+            {!quickOptions.length && <option value="">No models available</option>}
+            {quickOptions.some(option => !option.downloadable) && (
               <optgroup label={selectedProvider === 'ollama' ? 'Installed' : 'Available'}>
-                {options.filter(option => !option.downloadable).map(option => (
+                {quickOptions.filter(option => !option.downloadable).map(option => (
                   <option key={option.model.name} value={option.model.name}>{option.model.name}</option>
                 ))}
               </optgroup>
             )}
-            {options.some(option => option.downloadable) && (
+            {quickOptions.some(option => option.downloadable) && (
               <optgroup label="Available to install">
-                {options.filter(option => option.downloadable).map(option => (
+                {quickOptions.filter(option => option.downloadable).map(option => (
                   <option key={option.model.name} value={option.model.name}>{option.model.name}</option>
                 ))}
               </optgroup>
             )}
+            {onConfigure && <option value="__fireform_more_models__">More models…</option>}
           </select>
           <ChevronDown className="absolute right-3 top-2.5 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
         </span>
@@ -181,17 +200,23 @@ export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}
       )}
       {emptyMessage && !loading && <p className="text-xs text-amber-700" role="status">{emptyMessage}</p>}
       {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
-      <p className="text-[11px] text-zinc-500">
-        Choose from the providers you have set up.
-        {onConfigure && (
-          <>
-            {' '}
-            <button type="button" onClick={onConfigure} className="font-medium text-violet-700 hover:underline">
-              Configure…
-            </button>
-          </>
-        )}
-      </p>
+      {showHelpText && (
+        <p className="text-[11px] text-zinc-500">
+          Choose from the providers you have set up.
+          {onConfigure && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={event => onConfigure(selectedProvider as LLMProviderName, event.currentTarget)}
+                className="font-medium text-violet-700 hover:underline"
+              >
+                Configure…
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
       {selectedOption && !selectedOption.downloadable && (
         <p className="text-xs text-emerald-700" aria-live="polite">

@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Cpu, Globe } from 'lucide-react'
 import { ModelSelector } from '../../components/ModelSelector'
 import { Button } from '../../components/ui/button'
+import { describeLLMError, type LLMProviderName } from '../../lib/api'
 import { cn } from '../../lib/utils'
+import { useStore } from '../../store'
 import { ProviderConfigModal } from './ProviderConfigModal'
 
 function SettingRow({
@@ -51,7 +53,29 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: 
 }
 
 export function Settings() {
+  const refreshLLMModels = useStore(state => state.refreshLLMModels)
   const [providersOpen, setProvidersOpen] = useState(false)
+  const [initialProvider, setInitialProvider] = useState<LLMProviderName>('ollama')
+  const [catalogError, setCatalogError] = useState('')
+  const manageProvidersRef = useRef<HTMLButtonElement>(null)
+  const modalOpenerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    refreshLLMModels()
+      .then(() => setCatalogError(''))
+      .catch(error => setCatalogError(describeLLMError(error)))
+  }, [refreshLLMModels])
+
+  function openProviders(provider: LLMProviderName = 'ollama', trigger?: HTMLElement) {
+    modalOpenerRef.current = trigger || manageProvidersRef.current
+    setInitialProvider(provider)
+    setProvidersOpen(true)
+  }
+
+  function closeProviders() {
+    setProvidersOpen(false)
+    requestAnimationFrame(() => modalOpenerRef.current?.focus())
+  }
 
   return (
     <div className="flex-1 overflow-auto bg-zinc-50 p-8">
@@ -63,7 +87,13 @@ export function Settings() {
 
         <div className="flex items-center justify-between gap-3">
           <SectionHeader icon={Cpu} title="AI Model" />
-          <Button type="button" variant="outline" className="mt-8" onClick={() => setProvidersOpen(true)}>
+          <Button
+            ref={manageProvidersRef}
+            type="button"
+            variant="outline"
+            className="mt-8"
+            onClick={event => openProviders('ollama', event.currentTarget)}
+          >
             Configure providers
           </Button>
         </div>
@@ -72,8 +102,11 @@ export function Settings() {
             label="LLM provider and model"
             description="Choose from the providers you have set up."
           >
-            <ModelSelector onConfigure={() => setProvidersOpen(true)} />
+            <ModelSelector
+              onConfigure={(provider, trigger) => openProviders(provider, trigger)}
+            />
           </SettingRow>
+          {catalogError && <p className="pb-3 text-xs text-red-600" role="alert">{catalogError}</p>}
         </div>
 
         <SectionHeader icon={Globe} title="Language & Region" />
@@ -88,7 +121,9 @@ export function Settings() {
           </SettingRow>
         </div>
       </div>
-      {providersOpen && <ProviderConfigModal onClose={() => setProvidersOpen(false)} />}
+      {providersOpen && (
+        <ProviderConfigModal initialProvider={initialProvider} onClose={closeProviders} />
+      )}
     </div>
   )
 }

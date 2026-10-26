@@ -5,6 +5,7 @@ import {
   pullModel,
   type LLMModelChoice,
   type LLMModelsResponse,
+  type LLMProviderName,
   type ModelProgress,
 } from '../lib/api'
 import { isUsable, reconcileChoice } from '../lib/llmModels'
@@ -13,7 +14,10 @@ import {
   saveTemplates,
   loadLastOutputPath,
   loadSelectedLLM,
+  loadPinnedLLMModels,
+  savePinnedLLMModels,
   saveSelectedLLM,
+  type PinnedLLMModels,
 } from '../lib/storage'
 
 export interface ModelDownloadState {
@@ -60,6 +64,9 @@ const EMPTY_STUDIO_DRAFT: StudioDraft = {
   descriptionEdited: false,
 }
 
+let llmCatalogRefresh: Promise<LLMModelsResponse> | null = null
+let queuedLLMCatalogRefresh: Promise<LLMModelsResponse> | null = null
+
 interface AppStore {
   templates: Template[]
   selectedFillIds: number[]
@@ -73,6 +80,7 @@ interface AppStore {
   studioDraft: StudioDraft
   selectedLLM: LLMModelChoice | null
   llmCatalog: LLMModelsResponse | null
+  pinnedLLMModels: PinnedLLMModels
   modelDownload: ModelDownloadState | null
   notification: AppNotification | null
 
@@ -91,7 +99,8 @@ interface AppStore {
   setStudioFieldRows: (rows: FieldRow[] | ((prev: FieldRow[]) => FieldRow[])) => void
   resetStudioDraft: () => void
   setSelectedLLM: (selection: LLMModelChoice | null) => void
-  refreshLLMModels: () => Promise<LLMModelsResponse>
+  setPinnedLLMModels: (provider: LLMProviderName, models: string[]) => void
+  refreshLLMModels: (afterCurrent?: boolean) => Promise<LLMModelsResponse>
   startModelDownload: (provider: string, model: string) => Promise<void>
   clearNotification: () => void
 }
@@ -122,6 +131,7 @@ export const useStore = create<AppStore>((set, get) => ({
   studioDraft: EMPTY_STUDIO_DRAFT,
   selectedLLM: loadSelectedLLM(),
   llmCatalog: null,
+  pinnedLLMModels: loadPinnedLLMModels(),
   modelDownload: null,
   notification: null,
 
@@ -202,32 +212,74 @@ export const useStore = create<AppStore>((set, get) => ({
     saveSelectedLLM(selectedLLM)
     set({ selectedLLM })
   },
-  refreshLLMModels: async () => {
-    const catalog = await fetchLLMModels(true)
-    const selected = get().selectedLLM
-    const nextSelection = reconcileChoice(catalog, selected)
-    const selectedProvider = selected
-      ? catalog.providers.find(provider => provider.provider === selected.provider)
-      : undefined
-    const selectionDisappeared = Boolean(selected && !isUsable(selectedProvider, selected.model))
-    const selectionChanged = selected?.provider !== nextSelection?.provider
-      || selected?.model !== nextSelection?.model
-    if (selectionChanged) saveSelectedLLM(nextSelection)
-    set({
-      llmCatalog: catalog,
-      selectedLLM: nextSelection,
-      ...(selectionDisappeared
-        ? {
-          notification: {
-            text: nextSelection
-              ? `${selected?.provider} · ${selected?.model} is no longer available. Switched to ${nextSelection.provider} · ${nextSelection.model}.`
-              : `${selected?.provider} · ${selected?.model} is no longer available. Choose another model in Settings.`,
-            type: 'error' as const,
-          },
+  setPinnedLLMModels: (provider, models) => {
+    const pinnedLLMModels = { ...get().pinnedLLMModels, [provider]: [...new Set(models)] }
+    savePinnedLLMModels(pinnedLLMModels)
+    set({ pinnedLLMModels })
+  },
+  refreshLLMModels: (afterCurrent = false) => {
+    if (llmCatalogRefresh) {
+      if (!afterCurrent) return llmCatalogRefresh
+      if (!queuedLLMCatalogRefresh) {
+        const currentRefresh = llmCatalogRefresh
+        queuedLLMCatalogRefresh = currentRefresh
+          .then(
+            () => get().refreshLLMModels(),
+            () => get().refreshLLMModels()
+          )
+          .finally(() => {
+            queuedLLMCatalogRefresh = null
+          })
+      }
+      return queuedLLMCatalogRefresh
+    }
+
+    llmCatalogRefresh = fetchLLMModels(true)
+      .then(catalog => {
+        const selected = get().selectedLLM
+        const nextSelection = reconcileChoice(catalog, selected)
+        const selectedProvider = selected
+          ? catalog.providers.find(provider => provider.provider === selected.provider)
+          : undefined
+        const selectionDisappeared = Boolean(selected && !isUsable(selectedProvider, selected.model))
+        const selectionChanged = selected?.provider !== nextSelection?.provider
+          || selected?.model !== nextSelection?.model
+        if (selectionChanged) saveSelectedLLM(nextSelection)
+
+        const currentPinned = get().pinnedLLMModels
+        const nextPinned: PinnedLLMModels = {}
+        for (const provider of catalog.providers) {
+          if (!['ollama', 'gemini', 'openai', 'anthropic', 'custom'].includes(provider.provider)) continue
+          const name = provider.provider as LLMProviderName
+          const availableModels = new Set([
+            ...provider.models.map(model => model.name),
+            ...(provider.downloadable || []).map(model => model.name),
+          ])
+          const pinned = (currentPinned[name] || []).filter(model => availableModels.has(model))
+          if (pinned.length) nextPinned[name] = pinned
         }
-        : {}),
-    })
-    return catalog
+        if (JSON.stringify(currentPinned) !== JSON.stringify(nextPinned)) savePinnedLLMModels(nextPinned)
+        set({
+          llmCatalog: catalog,
+          selectedLLM: nextSelection,
+          pinnedLLMModels: nextPinned,
+          ...(selectionDisappeared
+            ? {
+              notification: {
+                text: nextSelection
+                  ? `${selected?.provider} · ${selected?.model} is no longer available. Switched to ${nextSelection.provider} · ${nextSelection.model}.`
+                  : `${selected?.provider} · ${selected?.model} is no longer available. Choose another model in Settings.`,
+                type: 'error' as const,
+              },
+            }
+            : {}),
+        })
+        return catalog
+      })
+      .finally(() => {
+        llmCatalogRefresh = null
+      })
+    return llmCatalogRefresh
   },
   startModelDownload: async (provider, model) => {
     if (get().modelDownload?.status === 'downloading') return
@@ -252,7 +304,7 @@ export const useStore = create<AppStore>((set, get) => ({
             : state.modelDownload,
         }))
       })
-      const refreshed = await get().refreshLLMModels()
+      const refreshed = await get().refreshLLMModels(true)
       const installed = refreshed.providers
         .find(item => item.provider === provider)
         ?.models.some(item => item.name === model && item.installed === true)
