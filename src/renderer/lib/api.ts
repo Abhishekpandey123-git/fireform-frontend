@@ -160,6 +160,7 @@ export interface LLMModelInfo {
   quantization?: string
   loaded?: boolean
   installed?: boolean
+  manual?: boolean
 }
 
 export interface DownloadableModelInfo {
@@ -182,9 +183,92 @@ export interface LLMProviderModels {
   downloadable?: DownloadableModelInfo[]
 }
 
+export type LLMProviderName = 'ollama' | 'gemini' | 'openai' | 'anthropic' | 'custom'
+
 export interface LLMModelsResponse {
   default: LLMModelChoice
   providers: LLMProviderModels[]
+}
+
+export interface LLMProviderConfig {
+  provider: LLMProviderName
+  configured: boolean
+  source: 'env' | 'ui' | 'none'
+  key_hint?: string | null
+  enabled: boolean
+  external: boolean
+  credential_status?: 'available' | 'unavailable' | null
+  base_url?: string | null
+  structured_output?: boolean | null
+}
+
+export interface LLMProviderConfigRequest {
+  api_key?: string
+  base_url?: string
+  structured_output?: boolean
+}
+
+export interface LLMProviderValidationResult {
+  provider: LLMProviderName
+  ok: boolean
+  models: LLMModelInfo[]
+  detail?: string | null
+  error_code?: string | null
+}
+
+export interface LLMManualModelResult {
+  provider: LLMProviderName
+  model: string
+  ok: boolean
+  detail?: string | null
+  error_code?: string | null
+}
+
+export interface LLMExternalConsent {
+  allow_external: boolean
+  source: 'env' | 'ui' | 'none'
+}
+
+export class LLMApiError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly statusCode?: number
+  ) {
+    super(message)
+    this.name = 'LLMApiError'
+  }
+}
+
+function llmApiError(body: unknown, statusCode: number): LLMApiError {
+  if (body && typeof body === 'object') {
+    const value = body as Record<string, unknown>
+    const code = typeof value['error_code'] === 'string' ? value['error_code'] : undefined
+    const message = typeof value['message'] === 'string'
+      ? value['message']
+      : extractErrorMessage(body, statusCode)
+    return new LLMApiError(message, code, statusCode)
+  }
+  return new LLMApiError(extractErrorMessage(body, statusCode), undefined, statusCode)
+}
+
+export function describeLLMError(error: unknown): string {
+  const code = error instanceof LLMApiError ? error.code : undefined
+  const detail = error instanceof Error ? error.message : 'An unexpected error occurred.'
+  const descriptions: Record<string, string> = {
+    LLM_AUTH_FAILED: 'The provider rejected the API key. Check the key and try again.',
+    LLM_EXTERNAL_CONSENT_REQUIRED: 'Allow sending data to external services before saving this provider.',
+    LLM_SECRET_KEY_UNAVAILABLE: 'FireForm cannot read or create its credential-encryption key.',
+    LLM_NOT_AVAILABLE: 'This provider or model is not currently available in FireForm.',
+    LLM_UNAVAILABLE: 'FireForm could not reach the provider. Check its URL and connection.',
+    LLM_MODEL_NOT_FOUND: 'The provider does not offer this model ID.',
+    LLM_RATE_LIMITED: 'The provider is rate-limiting requests or the account has no quota.',
+    LLM_BAD_RESPONSE: 'The provider refused the request or returned an unsupported response.',
+    LLM_CONFIG_ERROR: 'The provider configuration is invalid. Check the URL and options.',
+  }
+  if (!code) return detail
+  const summary = descriptions[code] || 'The provider request failed.'
+  return `${summary} (${code})${detail && detail !== summary ? ` ${detail}` : ''}`
 }
 
 export interface ModelProgress {
@@ -197,8 +281,98 @@ export async function fetchLLMModels(refresh = false): Promise<LLMModelsResponse
   const query = refresh ? '?refresh=true' : ''
   const response = await fetch(`${API_BASE_URL}/system/llm/models${query}`)
   const body = await parseJsonResponse(response)
-  if (!response.ok) throw new Error(extractErrorMessage(body, response.status))
+  if (!response.ok) throw llmApiError(body, response.status)
   return body as LLMModelsResponse
+}
+
+export async function fetchLLMProviderConfigs(): Promise<LLMProviderConfig[]> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config`)
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return (body as { providers: LLMProviderConfig[] }).providers
+}
+
+export async function saveLLMProviderConfig(
+  provider: Exclude<LLMProviderName, 'ollama'>,
+  config: LLMProviderConfigRequest
+): Promise<LLMProviderConfig> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config/${provider}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return body as LLMProviderConfig
+}
+
+export async function deleteLLMProviderConfig(
+  provider: Exclude<LLMProviderName, 'ollama'>
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config/${provider}`, {
+    method: 'DELETE',
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+}
+
+export async function validateLLMProviderConfig(
+  provider: Exclude<LLMProviderName, 'ollama'>,
+  config: LLMProviderConfigRequest
+): Promise<LLMProviderValidationResult> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config/${provider}/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return body as LLMProviderValidationResult
+}
+
+export async function addLLMManualModel(
+  provider: Exclude<LLMProviderName, 'ollama'>,
+  model: string
+): Promise<LLMManualModelResult> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config/${provider}/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return body as LLMManualModelResult
+}
+
+export async function deleteLLMManualModel(
+  provider: Exclude<LLMProviderName, 'ollama'>,
+  model: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/providers/config/${provider}/models`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+}
+
+export async function fetchLLMExternalConsent(): Promise<LLMExternalConsent> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/external-consent`)
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return body as LLMExternalConsent
+}
+
+export async function setLLMExternalConsent(allowExternal: boolean): Promise<LLMExternalConsent> {
+  const response = await fetch(`${API_BASE_URL}/system/llm/external-consent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allow_external: allowExternal }),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw llmApiError(body, response.status)
+  return body as LLMExternalConsent
 }
 
 export async function pullModel(
@@ -212,7 +386,7 @@ export async function pullModel(
   })
   if (!response.ok) {
     const body = await parseJsonResponse(response)
-    throw new Error(extractErrorMessage(body, response.status))
+    throw llmApiError(body, response.status)
   }
   if (!response.body) throw new Error('Model download did not return a stream.')
 

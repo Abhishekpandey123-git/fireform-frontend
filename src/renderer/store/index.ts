@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import type { FieldRow, Template } from '../types'
-import { fetchLLMModels, pullModel, type LLMModelChoice, type ModelProgress } from '../lib/api'
+import {
+  fetchLLMModels,
+  pullModel,
+  type LLMModelChoice,
+  type LLMModelsResponse,
+  type ModelProgress,
+} from '../lib/api'
+import { isUsable, reconcileChoice } from '../lib/llmModels'
 import {
   loadTemplates,
   saveTemplates,
@@ -65,6 +72,7 @@ interface AppStore {
   narrativeDirty: boolean
   studioDraft: StudioDraft
   selectedLLM: LLMModelChoice | null
+  llmCatalog: LLMModelsResponse | null
   modelDownload: ModelDownloadState | null
   notification: AppNotification | null
 
@@ -83,6 +91,7 @@ interface AppStore {
   setStudioFieldRows: (rows: FieldRow[] | ((prev: FieldRow[]) => FieldRow[])) => void
   resetStudioDraft: () => void
   setSelectedLLM: (selection: LLMModelChoice | null) => void
+  refreshLLMModels: () => Promise<LLMModelsResponse>
   startModelDownload: (provider: string, model: string) => Promise<void>
   clearNotification: () => void
 }
@@ -112,6 +121,7 @@ export const useStore = create<AppStore>((set, get) => ({
   narrativeDirty: false,
   studioDraft: EMPTY_STUDIO_DRAFT,
   selectedLLM: loadSelectedLLM(),
+  llmCatalog: null,
   modelDownload: null,
   notification: null,
 
@@ -192,6 +202,33 @@ export const useStore = create<AppStore>((set, get) => ({
     saveSelectedLLM(selectedLLM)
     set({ selectedLLM })
   },
+  refreshLLMModels: async () => {
+    const catalog = await fetchLLMModels(true)
+    const selected = get().selectedLLM
+    const nextSelection = reconcileChoice(catalog, selected)
+    const selectedProvider = selected
+      ? catalog.providers.find(provider => provider.provider === selected.provider)
+      : undefined
+    const selectionDisappeared = Boolean(selected && !isUsable(selectedProvider, selected.model))
+    const selectionChanged = selected?.provider !== nextSelection?.provider
+      || selected?.model !== nextSelection?.model
+    if (selectionChanged) saveSelectedLLM(nextSelection)
+    set({
+      llmCatalog: catalog,
+      selectedLLM: nextSelection,
+      ...(selectionDisappeared
+        ? {
+          notification: {
+            text: nextSelection
+              ? `${selected?.provider} · ${selected?.model} is no longer available. Switched to ${nextSelection.provider} · ${nextSelection.model}.`
+              : `${selected?.provider} · ${selected?.model} is no longer available. Choose another model in Settings.`,
+            type: 'error' as const,
+          },
+        }
+        : {}),
+    })
+    return catalog
+  },
   startModelDownload: async (provider, model) => {
     if (get().modelDownload?.status === 'downloading') return
 
@@ -215,7 +252,7 @@ export const useStore = create<AppStore>((set, get) => ({
             : state.modelDownload,
         }))
       })
-      const refreshed = await fetchLLMModels(true)
+      const refreshed = await get().refreshLLMModels()
       const installed = refreshed.providers
         .find(item => item.provider === provider)
         ?.models.some(item => item.name === model && item.installed === true)

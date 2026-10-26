@@ -1,170 +1,57 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useStore } from '../store'
 import {
-  fetchLLMModels,
+  describeLLMError,
   type LLMModelChoice,
-  type LLMModelInfo,
-  type LLMModelsResponse,
-  type LLMProviderModels,
 } from '../lib/api'
+import { defaultChoice, optionsFor, providersWithOllama } from '../lib/llmModels'
 import { cn } from '../lib/utils'
 
-interface ModelOption {
-  model: LLMModelInfo
-  downloadable: boolean
-}
-
-const OLLAMA_PROVIDER = 'ollama'
-
-function providersWithOllama(catalog: LLMModelsResponse): LLMProviderModels[] {
-  if (catalog.providers.some(provider => provider.provider === OLLAMA_PROVIDER)) {
-    return catalog.providers
-  }
-  return [
-    ...catalog.providers,
-    {
-      provider: OLLAMA_PROVIDER,
-      available: false,
-      detail: 'Ollama is not enabled on this server.',
-      models: [],
-    },
-  ]
-}
-
-function optionsFor(provider: LLMProviderModels | undefined): ModelOption[] {
-  if (!provider?.available) return []
-  const ollama = provider.provider === OLLAMA_PROVIDER
-  const installed = provider.models.filter(model => !ollama || model.installed !== false)
-  const downloadable = ollama
-    ? (provider.downloadable || []).filter(model => !installed.some(item => item.name === model.name))
-    : []
-  return [
-    ...installed.map(model => ({ model, downloadable: false })),
-    ...downloadable.map(model => ({ model, downloadable: true })),
-  ]
-}
-
-function isUsable(provider: LLMProviderModels | undefined, model: string): boolean {
-  return Boolean(
-    provider?.available &&
-    provider.models.some(item => item.name === model && (provider.provider !== OLLAMA_PROVIDER || item.installed !== false))
-  )
-}
-
-function sameChoice(left: LLMModelChoice | null, right: LLMModelChoice | null): boolean {
-  return left?.provider === right?.provider && left?.model === right?.model
-}
-
-function defaultChoice(catalog: LLMModelsResponse, providers: LLMProviderModels[]): LLMModelChoice | null {
-  const backendDefault = catalog.default
-  const defaultProvider = providers.find(provider => provider.provider === backendDefault.provider)
-  if (isUsable(defaultProvider, backendDefault.model)) return backendDefault
-
-  for (const provider of providers) {
-    const options = optionsFor(provider)
-    const model = options.find(option => !option.downloadable && option.model.name === provider.default_model)
-      || options.find(option => !option.downloadable)
-    if (model) return { provider: provider.provider, model: model.model.name }
-  }
-  return null
-}
-
-function reconcileChoice(
-  catalog: LLMModelsResponse,
-  saved: LLMModelChoice | null
-): { active: LLMModelChoice | null; draft: LLMModelChoice } {
-  const providers = providersWithOllama(catalog)
-  const savedProvider = providers.find(item => item.provider === saved?.provider)
-  const savedIsValid = Boolean(saved && isUsable(savedProvider, saved.model))
-  const active = savedIsValid && saved
-    ? saved
-    : defaultChoice(catalog, providers)
-  if (savedIsValid && active) return { active, draft: active }
-
-  const defaultProvider = providers.find(item => item.provider === catalog.default.provider)
-  const defaultOptions = optionsFor(defaultProvider)
-  const defaultOption = defaultOptions.find(option => option.model.name === catalog.default.model)
-    || defaultOptions[0]
-  if (defaultProvider && defaultOption) {
-    return {
-      active,
-      draft: { provider: defaultProvider.provider, model: defaultOption.model.name },
-    }
-  }
-  if (active) return { active, draft: active }
-
-  for (const provider of providers) {
-    const option = optionsFor(provider)[0]
-    if (option) return { active: null, draft: { provider: provider.provider, model: option.model.name } }
-  }
-
-  return { active: null, draft: { provider: catalog.default.provider || OLLAMA_PROVIDER, model: '' } }
-}
-
-export function ModelSelector() {
+export function ModelSelector({ onConfigure }: { onConfigure?: () => void } = {}) {
   const selectedLLM = useStore(state => state.selectedLLM)
   const setSelectedLLM = useStore(state => state.setSelectedLLM)
+  const catalog = useStore(state => state.llmCatalog)
+  const refreshLLMModels = useStore(state => state.refreshLLMModels)
   const modelDownload = useStore(state => state.modelDownload)
   const startModelDownload = useStore(state => state.startModelDownload)
-  const [catalog, setCatalog] = useState<LLMModelsResponse | null>(null)
-  const [selectedProvider, setSelectedProvider] = useState(selectedLLM?.provider || OLLAMA_PROVIDER)
-  const [selectedModel, setSelectedModel] = useState(selectedLLM?.model || '')
-  const [loading, setLoading] = useState(true)
+  const [draft, setDraft] = useState<{
+    choice: LLMModelChoice
+    catalog: typeof catalog
+    selectionKey: string
+  } | null>(null)
+  const [loadFinished, setLoadFinished] = useState(false)
   const [error, setError] = useState('')
 
-  const applyCatalog = useCallback((data: LLMModelsResponse) => {
-    setCatalog(data)
-    setError('')
-    const reconciled = reconcileChoice(data, useStore.getState().selectedLLM)
-    if (!sameChoice(useStore.getState().selectedLLM, reconciled.active)) {
-      setSelectedLLM(reconciled.active)
-    }
-    setSelectedProvider(reconciled.draft.provider)
-    setSelectedModel(reconciled.draft.model)
-  }, [setSelectedLLM])
-
   useEffect(() => {
+    if (catalog) return
     let active = true
-    fetchLLMModels()
-      .then(data => {
-        if (active) applyCatalog(data)
+    refreshLLMModels()
+      .then(() => {
+        if (active) setError('')
       })
       .catch(err => {
-        if (active) setError(err instanceof Error ? err.message : 'Unable to load LLM providers.')
+        if (active) setError(describeLLMError(err))
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) setLoadFinished(true)
       })
     return () => {
       active = false
     }
-  }, [applyCatalog])
+  }, [catalog, refreshLLMModels])
 
-  useEffect(() => {
-    if (modelDownload?.status !== 'success') return
-    let active = true
-    fetchLLMModels(true)
-      .then(data => {
-        if (!active) return
-        applyCatalog(data)
-      })
-      .catch(err => {
-        if (active) setError(err instanceof Error ? err.message : 'Unable to refresh LLM models.')
-      })
-    return () => {
-      active = false
-    }
-  }, [applyCatalog, modelDownload?.status, modelDownload?.model])
-
+  const loading = !catalog && !loadFinished
   const providers = useMemo(() => catalog
-    ? providersWithOllama(catalog)
-    : [{
-      provider: OLLAMA_PROVIDER,
-      available: false,
-      detail: error || 'Waiting for the backend model catalog.',
-      models: [],
-    }], [catalog, error])
+    ? providersWithOllama(catalog).filter(item => item.available)
+    : [], [catalog])
+  const selectionKey = selectedLLM ? `${selectedLLM.provider}\u0000${selectedLLM.model}` : ''
+  const draftChoice = draft?.catalog === catalog && draft.selectionKey === selectionKey
+    ? draft.choice
+    : null
+  const baseChoice = selectedLLM || (catalog ? defaultChoice(catalog) : null)
+  const selectedProvider = draftChoice?.provider || baseChoice?.provider || 'ollama'
+  const selectedModel = draftChoice?.model || baseChoice?.model || ''
   const provider = providers.find(item => item.provider === selectedProvider)
   const options = optionsFor(provider)
   const selectedOption = options.find(option => option.model.name === selectedModel)
@@ -182,9 +69,7 @@ export function ModelSelector() {
 
   function chooseProvider(providerName: string) {
     const nextProvider = providers.find(item => item.provider === providerName)
-    setSelectedProvider(providerName)
     if (!nextProvider?.available) {
-      setSelectedModel('')
       return
     }
 
@@ -192,25 +77,39 @@ export function ModelSelector() {
     const current = choices.find(option => option.model.name === selectedModel)
     const preferred = choices.find(option => option.model.name === nextProvider.default_model)
     const next = current || preferred || choices.find(option => !option.downloadable) || choices[0]
-    setSelectedModel(next?.model.name || '')
+    const choice = { provider: providerName, model: next?.model.name || '' }
     if (next && !next.downloadable) {
-      setSelectedLLM({ provider: providerName, model: next.model.name })
+      setSelectedLLM(choice)
+      setDraft({
+        choice,
+        catalog,
+        selectionKey: `${choice.provider}\u0000${choice.model}`,
+      })
+    } else {
+      setDraft({ choice, catalog, selectionKey })
     }
   }
 
   function chooseModel(modelName: string) {
-    setSelectedModel(modelName)
-    if (selectedOption?.model.name === modelName && !selectedOption.downloadable) {
-      setSelectedLLM({ provider: selectedProvider, model: modelName })
+    const choice = { provider: selectedProvider, model: modelName }
+    const option = options.find(item => item.model.name === modelName)
+    if (option && !option.downloadable) {
+      setSelectedLLM(choice)
+      setDraft({
+        choice,
+        catalog,
+        selectionKey: `${choice.provider}\u0000${choice.model}`,
+      })
     } else {
-      const option = options.find(item => item.model.name === modelName)
-      if (option && !option.downloadable) setSelectedLLM({ provider: selectedProvider, model: modelName })
+      setDraft({ choice, catalog, selectionKey })
     }
   }
 
   const emptyMessage = provider && !provider.available
     ? provider.detail || `${provider.provider} is unavailable.`
-    : provider && !options.length
+    : catalog && !providers.length
+      ? 'No providers are configured and available.'
+      : provider && !options.length
       ? 'No models are available for this provider.'
       : ''
   const showDownload = selectedOption?.downloadable && !downloading
@@ -230,11 +129,11 @@ export function ModelSelector() {
               'focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60'
             )}
           >
-            {!providers.length && <option value={selectedProvider}>Loading providers…</option>}
+            {!providers.length && (
+              <option value={selectedProvider}>{loading ? 'Loading providers…' : 'No available providers'}</option>
+            )}
             {providers.map(item => (
-              <option key={item.provider} value={item.provider} disabled={!item.available}>
-                {item.provider}{item.available ? '' : ' (unavailable)'}
-              </option>
+              <option key={item.provider} value={item.provider}>{item.provider}</option>
             ))}
           </select>
           <ChevronDown className="absolute right-3 top-2.5 h-3.5 w-3.5 text-zinc-400 pointer-events-none" />
@@ -256,7 +155,7 @@ export function ModelSelector() {
           >
             {!options.length && <option value="">No models available</option>}
             {options.some(option => !option.downloadable) && (
-              <optgroup label={selectedProvider === OLLAMA_PROVIDER ? 'Installed' : 'Available'}>
+              <optgroup label={selectedProvider === 'ollama' ? 'Installed' : 'Available'}>
                 {options.filter(option => !option.downloadable).map(option => (
                   <option key={option.model.name} value={option.model.name}>{option.model.name}</option>
                 ))}
@@ -282,10 +181,21 @@ export function ModelSelector() {
       )}
       {emptyMessage && !loading && <p className="text-xs text-amber-700" role="status">{emptyMessage}</p>}
       {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+      <p className="text-[11px] text-zinc-500">
+        Choose from the providers you have set up.
+        {onConfigure && (
+          <>
+            {' '}
+            <button type="button" onClick={onConfigure} className="font-medium text-violet-700 hover:underline">
+              Configure…
+            </button>
+          </>
+        )}
+      </p>
 
       {selectedOption && !selectedOption.downloadable && (
         <p className="text-xs text-emerald-700" aria-live="polite">
-          {selectedProvider === OLLAMA_PROVIDER ? 'Installed' : 'Available'}
+          {selectedProvider === 'ollama' ? 'Installed' : 'Available'}
           {selectedOption.model.loaded ? ' · Loaded in memory' : ''}
         </p>
       )}

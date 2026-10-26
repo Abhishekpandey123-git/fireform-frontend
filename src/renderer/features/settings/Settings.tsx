@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { Cpu, Globe } from 'lucide-react'
 import { ModelSelector } from '../../components/ModelSelector'
+import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils'
+import { ProviderConfigModal } from './ProviderConfigModal'
 
 function SettingRow({
   label,
@@ -48,6 +51,8 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: 
 }
 
 export function Settings() {
+  const [providersOpen, setProvidersOpen] = useState(false)
+
   return (
     <div className="flex-1 overflow-auto bg-zinc-50 p-8">
       <div className="max-w-xl mx-auto">
@@ -56,13 +61,18 @@ export function Settings() {
           <p className="text-sm text-zinc-400 mt-1">Configure FireForm to match your workflow.</p>
         </div>
 
-        <SectionHeader icon={Cpu} title="AI Model" />
+        <div className="flex items-center justify-between gap-3">
+          <SectionHeader icon={Cpu} title="AI Model" />
+          <Button type="button" variant="outline" className="mt-8" onClick={() => setProvidersOpen(true)}>
+            Configure providers
+          </Button>
+        </div>
         <div className="bg-white border border-zinc-200 rounded-xl px-5">
           <SettingRow
             label="LLM provider and model"
-            description="Choose from the providers and models enabled by your FireForm server."
+            description="Choose from the providers you have set up."
           >
-            <ModelSelector />
+            <ModelSelector onConfigure={() => setProvidersOpen(true)} />
           </SettingRow>
         </div>
 
@@ -78,6 +88,7 @@ export function Settings() {
           </SettingRow>
         </div>
       </div>
+      {providersOpen && <ProviderConfigModal onClose={() => setProvidersOpen(false)} />}
     </div>
   )
 }
