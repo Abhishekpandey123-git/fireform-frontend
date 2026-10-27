@@ -529,3 +529,53 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   if (!response.ok) throw new Error(extractErrorMessage(body, response.status))
   return body as AnalyticsData
 }
+
+export interface UserProfile {
+  profile_id?: string
+  name: string
+  profession: string
+  role: string
+  description?: string | null
+  custom_fields?: Record<string, string> | null
+  created_at?: string
+  updated_at?: string
+}
+
+export async function fetchProfile(): Promise<UserProfile | null> {
+  const response = await fetch(`${API_BASE_URL}/profiles/`)
+  if (response.status === 404) return null
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw new Error(extractErrorMessage(body, response.status))
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  if ('profile_id' in body || 'name' in body) return body as UserProfile
+  return null
+}
+
+export async function saveProfile(payload: {
+  profile_id?: string
+  name: string
+  profession: string
+  role: string
+  description?: string | null
+  custom_fields?: Record<string, string>
+}): Promise<UserProfile> {
+  const url = payload.profile_id
+    ? `${API_BASE_URL}/profiles/${payload.profile_id}`
+    : `${API_BASE_URL}/profiles/`
+  const method = payload.profile_id ? 'PATCH' : 'POST'
+
+  const response = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: payload.name,
+      profession: payload.profession,
+      role: payload.role,
+      description: payload.description || null,
+      custom_fields: payload.custom_fields || {},
+    }),
+  })
+  const body = await parseJsonResponse(response)
+  if (!response.ok) throw new Error(extractErrorMessage(body, response.status))
+  return body as UserProfile
+}
